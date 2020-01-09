@@ -117,7 +117,8 @@ int main(void)
     int float_len;
 
     time_t ps_time, now, last_nmeasent;
-    double v1,i1,v2,i2,timediff;
+    static double v1,i1,v2,i2;
+    double timediff;
     char powerontime[7];
     char powerofftime[7];
 
@@ -268,17 +269,29 @@ int main(void)
                         ps_time = mktime(&tm) - timezone;//use UTC
                     }
                     float_len=get_nmea_field(&parser,rx_nmea_line,4);//ACC voltage
-                    snprintf(parse_buffer,float_len+1,"%s",parser);
-                    v1=atof(parse_buffer);
+                    if(parser)
+                    {
+                        snprintf(parse_buffer,float_len+1,"%s",parser);
+                        v1=atof(parse_buffer);
+                    }
                     float_len=get_nmea_field(&parser,rx_nmea_line,5);//ACC current
-                    snprintf(parse_buffer,float_len+1,"%s",parser);
-                    i1=atof(parse_buffer);
+                    if(parser)
+                    {
+                        snprintf(parse_buffer,float_len+1,"%s",parser);
+                        i1=atof(parse_buffer);
+                    }
                     float_len=get_nmea_field(&parser,rx_nmea_line,6);//Solar panel voltage
-                    snprintf(parse_buffer,float_len+1,"%s",parser);
-                    v2=atof(parse_buffer);
+                    if(parser)
+                    {
+                        snprintf(parse_buffer,float_len+1,"%s",parser);
+                        v2=atof(parse_buffer);
+                    }
                     float_len=get_nmea_field(&parser,rx_nmea_line,7);//Solar panel current
-                    snprintf(parse_buffer,float_len+1,"%s",parser);
-                    i2=atof(parse_buffer);
+                    if(parser)
+                    {
+                        snprintf(parse_buffer,float_len+1,"%s",parser);
+                        i2=atof(parse_buffer);
+                    }
                     sprintf(command, "echo \"Vacc=%.2f Iacc=%.2f Vsolar=%.2f Isolar=%.2f\" > "POWERSTATE_FILE" ", v1,i1,v2,i2);
                     system(command);
                     fprintf(stderr,"%s\n",command);
