@@ -14,23 +14,9 @@
 #include <unistd.h>
 #include <string.h>
 
-#define PNBLL_SEND_PERIOD 5
-#define NBL_DATE_LENGTH 8
-#define NBL_TIME_LENGTH 6
-#define CHAR_BUF_SIZE 128//enough for polling port at 4800 bps every 100 ms
-#define NMEA_MAX_LENGTH 79
-#define BAUDRATE B4800   // for cross-compiling
-//#define BAUDRATE B115200   // for test on PC
-#define MODEMDEVICE "/dev/ttyS0" //on board
-//#define MODEMDEVICE "/dev/ttyUSB0" //on PC
-#define POWERSTATE_FILE "/var/power.state"
-#define ONOFF_FILE "/system/time.table"
-//#define ONOFF_FILE "/var/time.table"
-#define DEFAULT_POWERON_TIME "020000"
-#define DEFAULT_POWEROFF_TIME "050000"
+#include "config.h"
 
 int port_fd = -1;
-FILE * timetable_fp;
 int end_of_loop = 0;
 char rx_nmea_line[NMEA_MAX_LENGTH];
 char tx_nmea_line[NMEA_MAX_LENGTH];
@@ -121,14 +107,40 @@ int main(void)
     double timediff;
     char powerontime[7];
     char powerofftime[7];
+    char uartname[16];
 
     signal(SIGINT, sig_handler);
 
-    size_t tt_len = 0;
-    ssize_t tt_read;
-    char* tt_line = NULL;
+    size_t conf_len = 0;
+    ssize_t conf_read;
+    char* conf_line = NULL;
+    FILE * config_fp;
 
-    port_fd = open(MODEMDEVICE, O_RDWR | O_NONBLOCK);
+    //trying to read uart name from file, use default if fails
+    config_fp = fopen(UARTDEVNAME_FILE, "r");
+    if(config_fp == NULL)
+    {
+        sprintf(uartname,DEFAULT_SERIALDEVICE);
+    }
+    else
+    {
+        if( ((conf_read = getline(&conf_line, &conf_len, config_fp)) >= sizeof("ttyS0")-1) &&
+            (strstr(conf_line, "tty")!=NULL) )
+        {
+            if(!strncmp(conf_line, "/dev/", 5)) //No need to add "/dev/"
+            {
+                snprintf(uartname,sizeof(uartname),"%s",conf_line);
+            }
+            else snprintf(uartname,sizeof(uartname),"/dev/%s",conf_line);
+        }
+        else
+        {
+            sprintf(uartname,DEFAULT_SERIALDEVICE);
+        }
+        fclose(config_fp);
+    }
+
+    port_fd = open(uartname, O_RDWR | O_NONBLOCK);
     if (port_fd >= 0)
     {
         tcgetattr(port_fd, &newt);
@@ -168,19 +180,19 @@ int main(void)
                 *    5) Turn off time (UTC)
                 *    6) Checksum
                 */
-                timetable_fp = fopen(ONOFF_FILE, "r");
-                if(timetable_fp == NULL)
+                config_fp = fopen(ONOFF_FILE, "r");
+                if(config_fp == NULL)
                 {
                     sprintf(powerontime,DEFAULT_POWERON_TIME);
                     sprintf(powerofftime,DEFAULT_POWEROFF_TIME);
                 }
                 else
                 {
-                    if((tt_read = getline(&tt_line, &tt_len, timetable_fp)) >= sizeof(powerontime)-1)
+                    if((conf_read = getline(&conf_line, &conf_len, config_fp)) >= sizeof(powerontime)-1)
                     {
-                        snprintf(powerontime,sizeof(powerontime),"%s",tt_line);
-                        if((tt_read = getline(&tt_line, &tt_len, timetable_fp)) >= sizeof(powerofftime)-1)
-                            snprintf(powerofftime,sizeof(powerofftime),"%s",tt_line);
+                        snprintf(powerontime,sizeof(powerontime),"%s",conf_line);
+                        if((conf_read = getline(&conf_line, &conf_len, config_fp)) >= sizeof(powerofftime)-1)
+                            snprintf(powerofftime,sizeof(powerofftime),"%s",conf_line);
                         else
                             sprintf(powerofftime,DEFAULT_POWEROFF_TIME);
                     }
@@ -189,8 +201,8 @@ int main(void)
                         sprintf(powerontime,DEFAULT_POWERON_TIME);
                         sprintf(powerofftime,DEFAULT_POWEROFF_TIME);
                     }
+                    fclose(config_fp);
                 }
-                fclose(timetable_fp);
                 ptm=gmtime(&now);
                 strftime(parse_buffer, 20, "%H%M%S,%d%m%Y", ptm);
                 snprintf(tx_nmea_line,NMEA_MAX_LENGTH-4,"$PNBLL,%s,%s,%s,%s",parse_buffer,(ptm->tm_year>119)?"A":"V",powerontime,powerofftime);
@@ -242,7 +254,8 @@ int main(void)
                     break;
                 }
             }
-            if(rx_state==LINE_READY) {
+            if(rx_state==LINE_READY)
+            {
                 //int get_nmea_field(char* field, const char* sentence, int number)
                 parser = strstr(rx_nmea_line, "$PNBLP");
                 if (parser != NULL)
